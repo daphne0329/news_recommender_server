@@ -78,7 +78,7 @@ def generate_recommendation():
 
     # === Step 6: 添加日期 + 虚拟天气 ===
     result["Today"] = datetime.now().strftime("%B %d, %Y")
-    result["Weather"] = "19°C · Munich"
+    result["Weather"] = "19°C"
 
     return jsonify(result)
 
