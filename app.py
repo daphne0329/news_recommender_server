@@ -5,10 +5,10 @@ from datetime import datetime
 
 app = Flask(__name__)
 
-# === 加载增强后的数据集 ===
+# === 加载数据集 ===
 df = pd.read_excel("Augmented_Dataset_with_Relevance.xlsx")
 
-# === 后端识别用的标准 Topic 列名 ===
+# === 映射设置 ===
 topic_to_column = {
     "politic": "Relevance_Politic",
     "sport": "Relevance_Sport",
@@ -16,7 +16,6 @@ topic_to_column = {
     "digital": "Relevance_Digital"
 }
 
-# === Qualtrics 显示值 → 内部映射值 ===
 input_mapping = {
     "Politics": "politic",
     "Sports": "sport",
@@ -24,26 +23,23 @@ input_mapping = {
     "Technology": "digital"
 }
 
-# === 支持数字 recode 映射 ===
-code_to_text = {
-    "1": "Politics",
-    "2": "Sports",
-    "3": "Entertainment",
-    "4": "Technology"
-}
+# === Serendipitous 文章提取函数 ===
+def get_serendipitous(df, preferred, non_preferred):
+    pool = df[df["Primary Topic"] == non_preferred]
+    pool = pool.sort_values(by=topic_to_column[preferred], ascending=False)
+    top_10_percent = pool.head(max(1, len(pool) // 10))
+    return top_10_percent.sample(n=2, random_state=random.randint(0, 9999))
+
+# === Preferred 文章提取函数 ===
+def get_preferred(df, preferred, n=4):
+    pool = df[df["Primary Topic"] == preferred]
+    return pool.sample(n=n, random_state=random.randint(0, 9999))
 
 @app.route('/generate-recommendation', methods=['POST'])
 def generate_recommendation():
     data = request.get_json()
-
-    # === Step 1: 获取输入并标准化 ===
-    raw_preferred = str(data.get("preferred"))
-    raw_non_preferred = str(data.get("non_preferred"))
-
-    if raw_preferred in code_to_text:
-        raw_preferred = code_to_text[raw_preferred]
-    if raw_non_preferred in code_to_text:
-        raw_non_preferred = code_to_text[raw_non_preferred]
+    raw_preferred = data.get("preferred")
+    raw_non_preferred = data.get("non_preferred")
 
     preferred = input_mapping.get(raw_preferred)
     non_preferred = input_mapping.get(raw_non_preferred)
@@ -51,34 +47,24 @@ def generate_recommendation():
     if preferred not in topic_to_column or non_preferred not in topic_to_column:
         return jsonify({"error": "Invalid topic names"}), 400
 
-    # === Step 2: 生成 serendipitous 推荐池 ===
-    serendip_pool = df[df["Primary Topic"] == non_preferred]
-    serendip_pool = serendip_pool.sort_values(by=topic_to_column[preferred], ascending=False)
-    top_10_percent = serendip_pool.head(max(1, len(serendip_pool) // 10))
+    serendip = get_serendipitous(df, preferred, non_preferred).reset_index(drop=True)
+    prefer = get_preferred(df, preferred, n=4).reset_index(drop=True)
 
-    if len(top_10_percent) < 2:
-        return jsonify({"error": "Not enough serendipitous candidates"}), 500
-    serendipitous = top_10_percent.sample(n=2, random_state=random.randint(0, 9999))
+    result = {
+        "Today": datetime.today().strftime("%B %d, %Y")
+    }
 
-    # === Step 3: 抽取 4 篇偏好主题推荐 ===
-    preferred_pool = df[df["Primary Topic"] == preferred]
-    if len(preferred_pool) < 4:
-        return jsonify({"error": "Not enough preferred candidates"}), 500
-    preferred_articles = preferred_pool.sample(n=4, random_state=random.randint(0, 9999))
+    # 返回 Serendipitous 推荐
+    for i in range(2):
+        result[f"Seren_Article{i+1}_Title"] = serendip.loc[i, "Title"]
+        result[f"Seren_Article{i+1}_Summary"] = serendip.loc[i, "Content Summary"]
+        result[f"Seren_Article{i+1}_Topic"] = serendip.loc[i, "Primary Topic"]
 
-    # === Step 4: 合并 + 打乱顺序 ===
-    articles = pd.concat([serendipitous, preferred_articles]).sample(frac=1).reset_index(drop=True)
-
-    # === Step 5: 构造返回 JSON ===
-    result = {}
-    for i in range(6):
-        result[f"Article{i+1}_Title"] = articles.iloc[i]["Title"]
-        result[f"Article{i+1}_Summary"] = articles.iloc[i]["Content Summary"]
-        result[f"Article{i+1}_Topic"] = articles.iloc[i]["Primary Topic"].capitalize()
-
-    # === Step 6: 添加日期 + 虚拟天气 ===
-    result["Today"] = datetime.now().strftime("%B %d, %Y")
-    result["Weather"] = "19°C"
+    # 返回 Preferred 推荐
+    for i in range(4):
+        result[f"Prefer_Article{i+1}_Title"] = prefer.loc[i, "Title"]
+        result[f"Prefer_Article{i+1}_Summary"] = prefer.loc[i, "Content Summary"]
+        result[f"Prefer_Article{i+1}_Topic"] = prefer.loc[i, "Primary Topic"]
 
     return jsonify(result)
 
