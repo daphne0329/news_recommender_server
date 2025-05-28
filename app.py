@@ -23,15 +23,29 @@ input_mapping = {
     "Technology": "digital"
 }
 
+# === Qualtrics Recode Value（数字） → 文本映射 ===
+code_to_text = {
+    "1": "Politics",
+    "2": "Sports",
+    "3": "Entertainment",
+    "4": "Technology"
+}
+
 @app.route('/generate-recommendation', methods=['POST'])
 def generate_recommendation():
     data = request.get_json()
 
-    # 从 JSON 请求中获取 raw 文字输入
-    raw_preferred = data.get("preferred")
-    raw_non_preferred = data.get("non_preferred")
+    # 从 JSON 请求中获取 raw 文字或数字 code（转为字符串处理）
+    raw_preferred = str(data.get("preferred"))
+    raw_non_preferred = str(data.get("non_preferred"))
 
-    # 执行映射转换
+    # 如果是数字（Qualtrics Recode），转换为英文文本
+    if raw_preferred in code_to_text:
+        raw_preferred = code_to_text[raw_preferred]
+    if raw_non_preferred in code_to_text:
+        raw_non_preferred = code_to_text[raw_non_preferred]
+
+    # 执行映射转换为后端用的字段名
     preferred = input_mapping.get(raw_preferred)
     non_preferred = input_mapping.get(raw_non_preferred)
 
