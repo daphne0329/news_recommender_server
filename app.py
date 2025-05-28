@@ -74,6 +74,7 @@ def generate_recommendation():
     for i in range(6):
         result[f"Article{i+1}_Title"] = articles.iloc[i]["Title"]
         result[f"Article{i+1}_Summary"] = articles.iloc[i]["Content Summary"]
+        result[f"Article{i+1}_Topic"] = articles.iloc[i]["Primary Topic"].capitalize()
 
     # === Step 6: 添加日期 + 虚拟天气 ===
     result["Today"] = datetime.now().strftime("%B %d, %Y")
