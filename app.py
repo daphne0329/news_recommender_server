@@ -8,7 +8,14 @@ app = Flask(__name__)
 # === 加载数据集 ===
 df = pd.read_excel("Augmented_Dataset_with_Relevance.xlsx")
 
-# === 映射设置 ===
+# === Topic 编码与列名映射 ===
+recode_to_topic = {
+    1: "politic",
+    2: "sport",
+    3: "entertainment",
+    4: "digital"
+}
+
 topic_to_column = {
     "politic": "Relevance_Politic",
     "sport": "Relevance_Sport",
@@ -16,55 +23,51 @@ topic_to_column = {
     "digital": "Relevance_Digital"
 }
 
-input_mapping = {
-    "Politics": "politic",
-    "Sports": "sport",
-    "Entertainment": "entertainment",
-    "Technology": "digital"
-}
-
-# === Serendipitous 文章提取函数 ===
-def get_serendipitous(df, preferred, non_preferred):
-    pool = df[df["Primary Topic"] == non_preferred]
-    pool = pool.sort_values(by=topic_to_column[preferred], ascending=False)
-    top_10_percent = pool.head(max(1, len(pool) // 10))
-    return top_10_percent.sample(n=2, random_state=random.randint(0, 9999))
-
-# === Preferred 文章提取函数 ===
-def get_preferred(df, preferred, n=4):
-    pool = df[df["Primary Topic"] == preferred]
-    return pool.sample(n=n, random_state=random.randint(0, 9999))
-
 @app.route('/generate-recommendation', methods=['POST'])
 def generate_recommendation():
     data = request.get_json()
-    raw_preferred = data.get("preferred")
-    raw_non_preferred = data.get("non_preferred")
 
-    preferred = input_mapping.get(raw_preferred)
-    non_preferred = input_mapping.get(raw_non_preferred)
+    try:
+        preferred_code = int(data.get("preferred"))
+        non_preferred_code = int(data.get("non_preferred"))
+    except (ValueError, TypeError):
+        return jsonify({"error": "Topic codes must be integers"}), 400
+
+    preferred = recode_to_topic.get(preferred_code)
+    non_preferred = recode_to_topic.get(non_preferred_code)
 
     if preferred not in topic_to_column or non_preferred not in topic_to_column:
-        return jsonify({"error": "Invalid topic names"}), 400
+        return jsonify({"error": "Invalid topic codes"}), 400
 
-    serendip = get_serendipitous(df, preferred, non_preferred).reset_index(drop=True)
-    prefer = get_preferred(df, preferred, n=4).reset_index(drop=True)
+    # Step 1: Serendipitous 推荐
+    serendip_pool = df[df["Primary Topic"] == non_preferred]
+    serendip_pool = serendip_pool.sort_values(by=topic_to_column[preferred], ascending=False)
+    top_10_percent = serendip_pool.head(max(1, len(serendip_pool) // 10))
+    if len(top_10_percent) < 2:
+        return jsonify({"error": "Not enough serendipitous candidates"}), 500
+    serendipitous = top_10_percent.sample(n=2, random_state=random.randint(0, 9999))
 
-    result = {
-        "Today": datetime.today().strftime("%B %d, %Y")
-    }
+    # Step 2: 偏好推荐
+    preferred_pool = df[df["Primary Topic"] == preferred]
+    if len(preferred_pool) < 4:
+        return jsonify({"error": "Not enough preferred candidates"}), 500
+    preferred_articles = preferred_pool.sample(n=4, random_state=random.randint(0, 9999))
 
-    # 返回 Serendipitous 推荐
+    # Step 3: 构造 JSON 返回
+    result = {}
+
     for i in range(2):
-        result[f"Seren_Article{i+1}_Title"] = serendip.loc[i, "Title"]
-        result[f"Seren_Article{i+1}_Summary"] = serendip.loc[i, "Content Summary"]
-        result[f"Seren_Article{i+1}_Topic"] = serendip.loc[i, "Primary Topic"]
+        result[f"Seren_Article{i+1}_Title"] = serendipitous.iloc[i]["Title"]
+        result[f"Seren_Article{i+1}_Summary"] = serendipitous.iloc[i]["Content Summary"]
+        result[f"Seren_Article{i+1}_Topic"] = serendipitous.iloc[i]["Primary Topic"]
 
-    # 返回 Preferred 推荐
     for i in range(4):
-        result[f"Prefer_Article{i+1}_Title"] = prefer.loc[i, "Title"]
-        result[f"Prefer_Article{i+1}_Summary"] = prefer.loc[i, "Content Summary"]
-        result[f"Prefer_Article{i+1}_Topic"] = prefer.loc[i, "Primary Topic"]
+        result[f"Prefer_Article{i+1}_Title"] = preferred_articles.iloc[i]["Title"]
+        result[f"Prefer_Article{i+1}_Summary"] = preferred_articles.iloc[i]["Content Summary"]
+        result[f"Prefer_Article{i+1}_Topic"] = preferred_articles.iloc[i]["Primary Topic"]
+
+    # 加入当前日期
+    result["Today"] = datetime.now().strftime("%B %d, %Y")
 
     return jsonify(result)
 
