@@ -4,10 +4,10 @@ import random
 
 app = Flask(__name__)
 
-# === 加载数据集 ===
+# === 加载增强后的数据集 ===
 df = pd.read_excel("Augmented_Dataset_with_Relevance.xlsx")
 
-# === Topic 到相关性列的映射 ===
+# === 后端识别用的标准 Topic 列名 ===
 topic_to_column = {
     "politic": "Relevance_Politic",
     "sport": "Relevance_Sport",
@@ -15,16 +15,31 @@ topic_to_column = {
     "digital": "Relevance_Digital"
 }
 
+# === 来自 Qualtrics 的选项文本与真实 Topic 字段的映射 ===
+input_mapping = {
+    "Politics": "politic",
+    "Sports": "sport",
+    "Entertainment": "entertainment",
+    "Technology": "digital"
+}
+
 @app.route('/generate-recommendation', methods=['POST'])
 def generate_recommendation():
     data = request.get_json()
-    preferred = data.get("preferred")
-    non_preferred = data.get("non_preferred")
 
+    # 从 JSON 请求中获取 raw 文字输入
+    raw_preferred = data.get("preferred")
+    raw_non_preferred = data.get("non_preferred")
+
+    # 执行映射转换
+    preferred = input_mapping.get(raw_preferred)
+    non_preferred = input_mapping.get(raw_non_preferred)
+
+    # 合法性校验
     if preferred not in topic_to_column or non_preferred not in topic_to_column:
         return jsonify({"error": "Invalid topic names"}), 400
 
-    # === Step 1: 筛选 serendipitous 候选 ===
+    # === Step 1: 生成 serendipitous 推荐池 ===
     serendip_pool = df[df["Primary Topic"] == non_preferred]
     serendip_pool = serendip_pool.sort_values(
         by=topic_to_column[preferred], ascending=False
@@ -34,16 +49,16 @@ def generate_recommendation():
         return jsonify({"error": "Not enough serendipitous candidates"}), 500
     serendipitous = top_10_percent.sample(n=2, random_state=random.randint(0, 9999))
 
-    # === Step 2: 筛选 preferred 文章 ===
+    # === Step 2: 抽取 4 篇偏好主题的推荐 ===
     preferred_pool = df[df["Primary Topic"] == preferred]
     if len(preferred_pool) < 4:
         return jsonify({"error": "Not enough preferred candidates"}), 500
     preferred_articles = preferred_pool.sample(n=4, random_state=random.randint(0, 9999))
 
-    # === Step 3: 混洗，生成6篇文章 ===
+    # === Step 3: 合并 + 打乱顺序 ===
     articles = pd.concat([serendipitous, preferred_articles]).sample(frac=1).reset_index(drop=True)
 
-    # === Step 4: 返回 JSON 响应 ===
+    # === Step 4: 构造返回 JSON ===
     result = {}
     for i in range(6):
         result[f"Article{i+1}_Title"] = articles.iloc[i]["Title"]
