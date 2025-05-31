@@ -61,7 +61,7 @@ def generate_recommendation():
         result[f"Seren_Article{i+1}_Summary"] = serendipitous.iloc[i]["Content Summary"]
         result[f"Seren_Article{i+1}_Topic"] = serendipitous.iloc[i]["Primary Topic"]
 
-    for i in range(4):
+    for i in range(6):
         result[f"Prefer_Article{i+1}_Title"] = preferred_articles.iloc[i]["Title"]
         result[f"Prefer_Article{i+1}_Summary"] = preferred_articles.iloc[i]["Content Summary"]
         result[f"Prefer_Article{i+1}_Topic"] = preferred_articles.iloc[i]["Primary Topic"]
