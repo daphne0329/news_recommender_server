@@ -47,11 +47,12 @@ def generate_recommendation():
         return jsonify({"error": "Not enough serendipitous candidates"}), 500
     serendipitous = top_10_percent.sample(n=2, random_state=random.randint(0, 9999))
 
-    # Step 2: 偏好推荐
-    preferred_pool = df[df["Primary Topic"] == preferred]
-    if len(preferred_pool) < 4:
+    # Step 2: 偏好推荐（确保与serendipitous不重复）
+    serendip_ids = serendipitous["ArticleID"].tolist()
+    preferred_pool = df[(df["Primary Topic"] == preferred) & (~df["ArticleID"].isin(serendip_ids))]
+    if len(preferred_pool) < 6:
         return jsonify({"error": "Not enough preferred candidates"}), 500
-    preferred_articles = preferred_pool.sample(n=4, random_state=random.randint(0, 9999))
+    preferred_articles = preferred_pool.sample(n=6, random_state=random.randint(0, 9999))
 
     # Step 3: 构造 JSON 返回
     result = {}
@@ -61,7 +62,7 @@ def generate_recommendation():
         result[f"Seren_Article{i+1}_Summary"] = serendipitous.iloc[i]["Content Summary"]
         result[f"Seren_Article{i+1}_Topic"] = serendipitous.iloc[i]["Primary Topic"]
 
-    for i in range(4):
+    for i in range(6):
         result[f"Prefer_Article{i+1}_Title"] = preferred_articles.iloc[i]["Title"]
         result[f"Prefer_Article{i+1}_Summary"] = preferred_articles.iloc[i]["Content Summary"]
         result[f"Prefer_Article{i+1}_Topic"] = preferred_articles.iloc[i]["Primary Topic"]
